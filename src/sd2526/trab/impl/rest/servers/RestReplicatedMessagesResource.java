@@ -6,7 +6,6 @@ import java.net.URI;
 import jakarta.inject.Singleton;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
-import jakarta.ws.rs.ext.Provider;
 import sd2526.trab.api.Message;
 import sd2526.trab.api.java.Messages;
 import sd2526.trab.api.rest.RestMessages;
@@ -17,7 +16,6 @@ import sd2526.trab.impl.replication.ReplicationAck;
 import sd2526.trab.impl.replication.ReplicationCatchupResponse;
 import sd2526.trab.impl.replication.ReplicationOperation;
 
-@Provider
 @Singleton
 public class RestReplicatedMessagesResource extends RestResource implements RestMessages, RestAdminMessages {
 
@@ -150,6 +148,9 @@ public class RestReplicatedMessagesResource extends RestResource implements Rest
 		}
 
 		private RedirectUriBuilder path(String segment) {
+			while (!segment.isEmpty() && segment.charAt(0) == '/') {
+				segment = segment.substring(1);
+			}
 			if (builder.charAt(builder.length() - 1) != '/') {
 				builder.append('/');
 			}
