@@ -31,19 +31,19 @@ public class RestReplicatedMessagesResource extends RestResource implements Rest
 
 	@Override
 	public String postMessage(String pwd, Message msg) {
-		redirectIfSecondary(buildPostMessageUri(pwd), true);
+		redirectIfSecondary(buildPostMessageUri(pwd));
 		return super.resultOrThrow(messages.postMessage(pwd, msg));
 	}
 
 	@Override
 	public Message getMessage(String name, String mid, String pwd) {
-		redirectIfSecondary(buildGetMessageUri(name, mid, pwd), false);
+		redirectIfSecondary(buildGetMessageUri(name, mid, pwd));
 		return super.resultOrThrow(messages.getInboxMessage(name, mid, pwd));
 	}
 
 	@Override
 	public List<String> getMessages(String name, String pwd, String query) {
-		redirectIfSecondary(buildGetMessagesUri(name, pwd, query), false);
+		redirectIfSecondary(buildGetMessagesUri(name, pwd, query));
 		if (query != null && !query.isEmpty()) {
 			return super.resultOrThrow(messages.searchInbox(name, pwd, query));
 		}
@@ -52,13 +52,13 @@ public class RestReplicatedMessagesResource extends RestResource implements Rest
 
 	@Override
 	public void removeFromUserInbox(String name, String mid, String pwd) {
-		redirectIfSecondary(buildRemoveInboxUri(name, mid, pwd), false);
+		redirectIfSecondary(buildRemoveInboxUri(name, mid, pwd));
 		super.resultOrThrow(messages.removeInboxMessage(name, mid, pwd));
 	}
 
 	@Override
 	public void deleteMessage(String name, String mid, String pwd) {
-		redirectIfSecondary(buildDeleteMessageUri(name, mid, pwd), false);
+		redirectIfSecondary(buildDeleteMessageUri(name, mid, pwd));
 		super.resultOrThrow(messages.deleteMessage(name, mid, pwd));
 	}
 
@@ -87,7 +87,7 @@ public class RestReplicatedMessagesResource extends RestResource implements Rest
 		return super.resultOrThrow(admin.getOperationsAfter(seq, limit));
 	}
 
-	private void redirectIfSecondary(URI targetUri, boolean preserveMethodBody) {
+	private void redirectIfSecondary(URI targetUri) {
 		if (messages instanceof JavaReplicatedMessagesService replicated && !replicated.isPrimary()) {
 			throw new WebApplicationException(Response.temporaryRedirect(targetUri).build());
 		}

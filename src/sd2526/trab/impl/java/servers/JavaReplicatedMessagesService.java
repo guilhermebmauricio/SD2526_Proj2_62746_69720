@@ -45,6 +45,10 @@ public class JavaReplicatedMessagesService implements Messages, AdminMessages {
 
 	@Override
 	public Result<String> postMessage(String pwd, Message msg) {
+		if (!replication.isPrimary()) {
+			return error(ErrorCode.FORBIDDEN);
+		}
+
 		var res = delegate.postMessage(pwd, msg);
 		if (!res.isOK()) {
 			return res;
@@ -80,6 +84,10 @@ public class JavaReplicatedMessagesService implements Messages, AdminMessages {
 
 	@Override
 	public Result<Void> removeInboxMessage(String name, String mid, String pwd) {
+		if (!replication.isPrimary()) {
+			return error(ErrorCode.FORBIDDEN);
+		}
+
 		var res = delegate.removeInboxMessage(name, mid, pwd);
 		if (!res.isOK()) {
 			return res;
@@ -95,6 +103,10 @@ public class JavaReplicatedMessagesService implements Messages, AdminMessages {
 
 	@Override
 	public Result<Void> deleteMessage(String name, String mid, String pwd) {
+		if (!replication.isPrimary()) {
+			return error(ErrorCode.FORBIDDEN);
+		}
+
 		var res = delegate.deleteMessage(name, mid, pwd);
 		if (!res.isOK()) {
 			return res;
@@ -114,7 +126,9 @@ public class JavaReplicatedMessagesService implements Messages, AdminMessages {
 
 	@Override
 	public Result<Void> remotePostMessage(Message m) {
-		
+		if (!replication.isPrimary()) {
+			return error(ErrorCode.FORBIDDEN);
+		}
 
 		var res = delegate.remotePostMessage(m);
 		if (!res.isOK()) {
@@ -130,7 +144,9 @@ public class JavaReplicatedMessagesService implements Messages, AdminMessages {
 
 	@Override
 	public Result<Void> remoteDeleteMessage(String mid) {
-		
+		if (!replication.isPrimary()) {
+			return error(ErrorCode.FORBIDDEN);
+		}
 
 		var res = delegate.remoteDeleteMessage(mid);
 		if (!res.isOK()) {
@@ -146,8 +162,20 @@ public class JavaReplicatedMessagesService implements Messages, AdminMessages {
 
 	@Override
 	public Result<Void> remoteDeleteUserInbox(String name) {
-		
-		return delegate.remoteDeleteUserInbox(name);
+		if (!replication.isPrimary()) {
+			return error(ErrorCode.FORBIDDEN);
+		}
+
+		var res = delegate.remoteDeleteUserInbox(name);
+		if (!res.isOK()) {
+			return res;
+		}
+
+		var op = new ReplicationOperation();
+		op.setType(OperationType.REMOTE_DELETE_USER_INBOX);
+		op.setName(name);
+
+		return replicateFromPrimary(op);
 	}
 
 	@Override
@@ -181,6 +209,7 @@ public class JavaReplicatedMessagesService implements Messages, AdminMessages {
 			case POST_MESSAGE, REMOTE_POST_MESSAGE -> delegate.remotePostMessage(op.getMessage());
 			case DELETE_MESSAGE, REMOTE_DELETE_MESSAGE -> delegate.remoteDeleteMessage(op.getMid());
 			case REMOVE_INBOX_MESSAGE -> removeInboxLocally(op.getName(), op.getMid());
+			case REMOTE_DELETE_USER_INBOX -> delegate.remoteDeleteUserInbox(op.getName());
 		};
 	}
 

@@ -5,7 +5,6 @@ import static sd2526.trab.api.java.Result.ok;
 import static sd2526.trab.api.java.Result.ErrorCode.BAD_REQUEST;
 import static sd2526.trab.api.java.Result.ErrorCode.CONFLICT;
 import static sd2526.trab.api.java.Result.ErrorCode.FORBIDDEN;
-import static sd2526.trab.impl.java.clients.Clients.AdminMessagesClient;
 
 import java.util.Collection;
 import java.util.HashSet;
@@ -19,6 +18,7 @@ import sd2526.trab.api.java.Result.ErrorCode;
 import sd2526.trab.api.java.Users;
 import sd2526.trab.impl.api.java.AdminUsers;
 import sd2526.trab.impl.db.DB;
+import sd2526.trab.impl.java.clients.Clients;
 
 
 public class JavaUsers extends JavaBaseService implements Users, AdminUsers {
@@ -77,7 +77,7 @@ public class JavaUsers extends JavaBaseService implements Users, AdminUsers {
 		return fetchUser(name, pwd )
 				.thenWith( (user) -> DB.deleteOne(user))		
 				.async( (user) -> {
-					AdminMessagesClient.get().remoteDeleteUserInbox(name);
+					Clients.PrimaryAdminMessagesClient(THIS_DOMAIN).remoteDeleteUserInbox(name);
 				});
 	}
 
