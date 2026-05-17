@@ -30,6 +30,9 @@ import sd2526.trab.api.java.Result.ErrorCode;
 import sd2526.trab.impl.api.java.AdminMessages;
 import sd2526.trab.impl.db.DB;
 import sd2526.trab.impl.java.clients.Clients;
+import sd2526.trab.impl.replication.ReplicationAck;
+import sd2526.trab.impl.replication.ReplicationCatchupResponse;
+import sd2526.trab.impl.replication.ReplicationOperation;
 import sd2526.trab.impl.utils.IP;
 import sd2526.trab.impl.utils.Sleep;
 
@@ -345,6 +348,16 @@ public class JavaMessages extends JavaBaseService implements Messages, AdminMess
 			});		
 			
 		}	
+
+		@Override
+		public Result<ReplicationAck> replicateOperation(ReplicationOperation op) {
+			return Result.error(ErrorCode.NOT_IMPLEMENTED);
+		}
+
+		@Override
+		public Result<ReplicationCatchupResponse> getOperationsAfter(long seq, int limit) {
+			return Result.error(ErrorCode.NOT_IMPLEMENTED);
+		}
 		
 		
 		private List<String> getLocalRecipientAddresses(  Message msg ) {

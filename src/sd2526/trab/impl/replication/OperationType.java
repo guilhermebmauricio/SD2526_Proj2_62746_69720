@@ -1,0 +1,9 @@
+package sd2526.trab.impl.replication;
+
+public enum OperationType {
+	POST_MESSAGE,
+	REMOVE_INBOX_MESSAGE,
+	DELETE_MESSAGE,
+	REMOTE_POST_MESSAGE,
+	REMOTE_DELETE_MESSAGE
+}
