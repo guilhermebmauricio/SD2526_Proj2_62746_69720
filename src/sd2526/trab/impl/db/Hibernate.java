@@ -149,5 +149,16 @@ public class Hibernate {
 				return error(ErrorCode.INTERNAL_ERROR);
 			}
 		}
+
+		public <T> Result<List<T>> select(String sqlStatement, Class<T> clazz, Object... params) {
+			try {
+				var query = session.createNativeQuery(sqlStatement, clazz);
+				for (int i = 0; i < params.length; i++)
+					query.setParameter(i + 1, params[i]);
+				return ok(query.list());
+			} catch (Exception e) {
+				return error(ErrorCode.INTERNAL_ERROR);
+			}
+		}
 	}
 }
