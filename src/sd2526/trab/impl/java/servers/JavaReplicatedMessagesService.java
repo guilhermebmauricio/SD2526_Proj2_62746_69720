@@ -4,6 +4,7 @@ import static sd2526.trab.api.java.Result.error;
 import static sd2526.trab.api.java.Result.ok;
 
 import java.net.URI;
+
 import java.util.List;
 import java.util.logging.Logger;
 
@@ -44,10 +45,6 @@ public class JavaReplicatedMessagesService implements Messages, AdminMessages {
 
 	@Override
 	public Result<String> postMessage(String pwd, Message msg) {
-		if (!replication.isPrimary()) {
-			return primaryMessages().postMessage(pwd, msg);
-		}
-
 		var res = delegate.postMessage(pwd, msg);
 		if (!res.isOK()) {
 			return res;
@@ -83,10 +80,6 @@ public class JavaReplicatedMessagesService implements Messages, AdminMessages {
 
 	@Override
 	public Result<Void> removeInboxMessage(String name, String mid, String pwd) {
-		if (!replication.isPrimary()) {
-			return primaryMessages().removeInboxMessage(name, mid, pwd);
-		}
-
 		var res = delegate.removeInboxMessage(name, mid, pwd);
 		if (!res.isOK()) {
 			return res;
@@ -102,10 +95,6 @@ public class JavaReplicatedMessagesService implements Messages, AdminMessages {
 
 	@Override
 	public Result<Void> deleteMessage(String name, String mid, String pwd) {
-		if (!replication.isPrimary()) {
-			return primaryMessages().deleteMessage(name, mid, pwd);
-		}
-
 		var res = delegate.deleteMessage(name, mid, pwd);
 		if (!res.isOK()) {
 			return res;
@@ -125,9 +114,7 @@ public class JavaReplicatedMessagesService implements Messages, AdminMessages {
 
 	@Override
 	public Result<Void> remotePostMessage(Message m) {
-		if (!replication.isPrimary()) {
-			return primaryAdmin().remotePostMessage(m);
-		}
+		
 
 		var res = delegate.remotePostMessage(m);
 		if (!res.isOK()) {
@@ -143,9 +130,7 @@ public class JavaReplicatedMessagesService implements Messages, AdminMessages {
 
 	@Override
 	public Result<Void> remoteDeleteMessage(String mid) {
-		if (!replication.isPrimary()) {
-			return primaryAdmin().remoteDeleteMessage(mid);
-		}
+		
 
 		var res = delegate.remoteDeleteMessage(mid);
 		if (!res.isOK()) {
@@ -161,9 +146,7 @@ public class JavaReplicatedMessagesService implements Messages, AdminMessages {
 
 	@Override
 	public Result<Void> remoteDeleteUserInbox(String name) {
-		if (!replication.isPrimary()) {
-			return primaryAdmin().remoteDeleteUserInbox(name);
-		}
+		
 		return delegate.remoteDeleteUserInbox(name);
 	}
 
@@ -209,12 +192,6 @@ public class JavaReplicatedMessagesService implements Messages, AdminMessages {
 		return res;
 	}
 
-	private Messages primaryMessages() {
-		URI primary = replication.primaryUri();
-		Log.info(() -> "Forwarding write to primary %s".formatted(primary));
-		return Clients.MessagesClient.get(primary);
-	}
-
 	private AdminMessages primaryAdmin() {
 		return Clients.AdminMessagesClient.get(replication.primaryUri());
 	}
@@ -244,3 +221,6 @@ public class JavaReplicatedMessagesService implements Messages, AdminMessages {
 		return defaultValue;
 	}
 }
+
+
+
