@@ -66,7 +66,7 @@ class DiscoveryImpl implements Discovery {
 
 	private static Discovery singleton;
 
-	private Map<String, Set<URI>> uris = new ConcurrentHashMap<>();
+	private Map<String, Map<URI, Long>> uris = new ConcurrentHashMap<>();
 	
 	synchronized static Discovery getInstance() {
 		if (singleton == null) {
@@ -107,13 +107,29 @@ class DiscoveryImpl implements Discovery {
 	@Override
 	public URI[] knownUrisOf(String serviceName, int minEntries) {
 		while(true) {
-			var res = uris.getOrDefault(serviceName, Collections.emptySet());
+			var res = currentUrisOf(serviceName);
 			if( res.size() >= minEntries )
 				return res.toArray( new URI[res.size()]);
 			else
 				Sleep.ms(DISCOVERY_ANNOUNCE_PERIOD);
 				
 		}
+	}
+
+	private Set<URI> currentUrisOf(String serviceName) {
+		var entries = uris.get(serviceName);
+		if (entries == null)
+			return Collections.emptySet();
+
+		long expirationDeadline = System.currentTimeMillis() - DISCOVERY_RETRY_TIMEOUT;
+		entries.entrySet().removeIf(e -> e.getValue() < expirationDeadline);
+
+		if (entries.isEmpty()) {
+			uris.remove(serviceName, entries);
+			return Collections.emptySet();
+		}
+
+		return Set.copyOf(entries.keySet());
 	}
 
 	private void startListener() {
@@ -132,7 +148,7 @@ class DiscoveryImpl implements Discovery {
 						if (parts.length == 2) {
 							var serviceName = parts[0];
 							var uri = URI.create(parts[1]);
-							uris.computeIfAbsent(serviceName, (k) -> ConcurrentHashMap.newKeySet()).add( uri );
+							uris.computeIfAbsent(serviceName, (k) -> new ConcurrentHashMap<>()).put(uri, System.currentTimeMillis());
 						}
 
 					} catch (Exception x) {

@@ -10,6 +10,9 @@ import sd2526.trab.impl.api.java.AdminMessages;
 import sd2526.trab.impl.api.rest.RestAdminMessages;
 import sd2526.trab.impl.java.clients.Clients;
 import sd2526.trab.impl.java.servers.JavaMessages;
+import sd2526.trab.impl.replication.ReplicationAck;
+import sd2526.trab.impl.replication.ReplicationCatchupResponse;
+import sd2526.trab.impl.replication.ReplicationOperation;
 
 @Singleton
 public class RestMessagesResource extends RestResource implements RestMessages, RestAdminMessages {
@@ -72,5 +75,15 @@ public class RestMessagesResource extends RestResource implements RestMessages, 
 	@Override
 	public void remoteDeleteUserInbox(String name) {
 		super.resultOrThrow( ((AdminMessages)impl()).remoteDeleteUserInbox(name));
+	}
+
+	@Override
+	public ReplicationAck replicateOperation(ReplicationOperation op) {
+		return super.resultOrThrow(((AdminMessages) impl()).replicateOperation(op));
+	}
+
+	@Override
+	public ReplicationCatchupResponse getOperationsAfter(long seq, int limit) {
+		return super.resultOrThrow(((AdminMessages) impl()).getOperationsAfter(seq, limit));
 	}
 }

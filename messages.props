@@ -28,10 +28,10 @@ DISCOVERY_MULTICAST_PORT=2266
 #MESSAGES_REST_PROXY_PORT=messages REST proxy server port
 #MESSAGES_REST_PROXY_EXTRA_ARGS=extra arguments for messages REST proxy server (optional)
 
-#MESSAGES_REP_SERVER_MAINCLASS=replicated messages REST server class
-#MESSAGES_REP_PORT=replicated messages REST server port
-#MESSAGES_REP_EXTRA_ARGS_FIRST=extra arguments for the first replicated messages REST server (optional)
-#MESSAGES_REP_EXTRA_ARGS_OTHER=extra arguments for the other replicated messages REST servers (optional)
+MESSAGES_REP_SERVER_MAINCLASS=sd2526.trab.impl.rest.servers.RestReplicatedMessagesServer
+MESSAGES_REP_PORT=5567
+MESSAGES_REP_EXTRA_ARGS_FIRST=primary --rep-log-size 500 --rep-queue-size 500
+MESSAGES_REP_EXTRA_ARGS_OTHER=secondary --rep-log-size 500 --rep-queue-size 500
 
 #keystores for the users server (e.g. users.ourorg0,users.jks,users0pwd)
 USERS_KEYSTORES=users.ourorg0,users_ourorg0.jks,users.ourorg0.pwd users.ourorg1,users_ourorg1.jks,users.ourorg1.pwd users.ourorg2,users_ourorg2.jks,users.ourorg2.pwd
