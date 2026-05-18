@@ -112,12 +112,12 @@ public class JavaMessages extends JavaBaseService implements Messages, AdminMess
 				SELECT m.id FROM Message m
 				RIGHT JOIN InboxEntry e
 				ON e.mid = m.id 
-				AND e.recipient = '%s'
-				WHERE (upper(m.subject) LIKE '%%%s%%' OR upper(m.contents) LIKE '%%%s%%')
-				""".formatted(name, query.toUpperCase(), query.toUpperCase());
+				AND e.recipient = ?1
+				WHERE (upper(m.subject) LIKE ?2 OR upper(m.contents) LIKE ?2)
+				""";
 
 		return getUser(name, pwd )
-				.then( () -> DB.select( sqlExpr, String.class));		
+				.then( () -> DB.select( sqlExpr, String.class, name, "%" + query.toUpperCase() + "%"));		
 	}
 	
 	@Override
