@@ -29,7 +29,7 @@ public class RestReplicatedMessagesResource extends RestResource implements Rest
 
 	@Override
 	public String postMessage(String pwd, Message msg) {
-		redirectWriteIfSecondary(buildPostMessageUri(pwd));
+		redirectOrRejectWriteIfNotWritable(buildPostMessageUri(pwd));
 		try {
 			return super.resultOrThrow(messages.postMessage(pwd, msg));
 		} finally {
@@ -62,7 +62,7 @@ public class RestReplicatedMessagesResource extends RestResource implements Rest
 
 	@Override
 	public void removeFromUserInbox(String name, String mid, String pwd) {
-		redirectWriteIfSecondary(buildRemoveInboxUri(name, mid, pwd));
+		redirectOrRejectWriteIfNotWritable(buildRemoveInboxUri(name, mid, pwd));
 		try {
 			super.resultOrThrow(messages.removeInboxMessage(name, mid, pwd));
 		} finally {
@@ -72,7 +72,7 @@ public class RestReplicatedMessagesResource extends RestResource implements Rest
 
 	@Override
 	public void deleteMessage(String name, String mid, String pwd) {
-		redirectWriteIfSecondary(buildDeleteMessageUri(name, mid, pwd));
+		redirectOrRejectWriteIfNotWritable(buildDeleteMessageUri(name, mid, pwd));
 		try {
 			super.resultOrThrow(messages.deleteMessage(name, mid, pwd));
 		} finally {
@@ -96,6 +96,11 @@ public class RestReplicatedMessagesResource extends RestResource implements Rest
 	}
 
 	@Override
+	public Long getCurrentVersion() {
+		return super.resultOrThrow(admin.getCurrentVersion());
+	}
+
+	@Override
 	public ReplicationAck replicateOperation(ReplicationOperation op) {
 		return super.resultOrThrow(admin.replicateOperation(op));
 	}
@@ -105,11 +110,18 @@ public class RestReplicatedMessagesResource extends RestResource implements Rest
 		return super.resultOrThrow(admin.getOperationsAfter(seq, limit));
 	}
 
-	private void redirectWriteIfSecondary(URI targetUri) {
-		if (!replicatedMessages().isPrimary()) {
-			publishResponseVersion();
+	private void redirectOrRejectWriteIfNotWritable(URI targetUri) {
+		var replicated = replicatedMessages();
+		if (replicated.isWritablePrimary()) {
+			return;
+		}
+
+		publishResponseVersion();
+		if (!replicated.isPrimary()) {
 			throw new WebApplicationException(Response.temporaryRedirect(targetUri).build());
 		}
+
+		throw new WebApplicationException(Response.status(Response.Status.SERVICE_UNAVAILABLE).build());
 	}
 
 	private void redirectStaleReadIfNeeded(URI targetUri) {

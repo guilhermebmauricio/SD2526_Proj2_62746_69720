@@ -4,7 +4,6 @@ import sd2526.trab.api.java.Messages;
 import sd2526.trab.api.java.Users;
 import sd2526.trab.impl.api.java.AdminMessages;
 import sd2526.trab.impl.api.java.AdminUsers;
-import sd2526.trab.impl.discovery.Discovery;
 import sd2526.trab.impl.grpc.clients.GrpcAdminMessagesClient;
 import sd2526.trab.impl.grpc.clients.GrpcAdminUsersClient;
 import sd2526.trab.impl.grpc.clients.GrpcMessagesClient;
@@ -15,8 +14,6 @@ import sd2526.trab.impl.rest.clients.RestMessagesClient;
 import sd2526.trab.impl.rest.clients.RestUsersClient;
 
 public class Clients {
-	private static final String PRIMARY_MESSAGES_SERVICE = "MessagesPrimary";
-
 	public static final ClientFactory<Users> UsersClient = new ClientFactory<>(Users.SERVICE_NAME, RestUsersClient::new, GrpcUsersClient::new);
 
 	public static final ClientFactory<Messages> MessagesClient = new ClientFactory<>(Messages.SERVICE_NAME, RestMessagesClient::new, GrpcMessagesClient::new);
@@ -25,11 +22,5 @@ public class Clients {
 	public static final ClientFactory<AdminUsers> AdminUsersClient = new ClientFactory<>(Users.SERVICE_NAME, RestAdminUsersClient::new, GrpcAdminUsersClient::new);
 
 	public static final ClientFactory<AdminMessages> AdminMessagesClient = new ClientFactory<>(Messages.SERVICE_NAME, RestAdminMessagesClient::new, GrpcAdminMessagesClient::new);
-
-	public static AdminMessages PrimaryAdminMessagesClient(String domain) {
-		var sn = "%s@%s".formatted(PRIMARY_MESSAGES_SERVICE, domain);
-		var uri = Discovery.getInstance().knownUrisOf(sn, 1)[0];
-		return AdminMessagesClient.get(uri);
-	}
 
 }

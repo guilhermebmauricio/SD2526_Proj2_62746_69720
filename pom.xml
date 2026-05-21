@@ -162,5 +162,10 @@
 			<artifactId>netty-codec-http</artifactId>
 			<version>4.1.131.Final</version>
 		</dependency>
+        <dependency>
+			<groupId>org.apache.zookeeper</groupId>
+			<artifactId>zookeeper</artifactId>
+			<version>3.9.5</version>
+		</dependency>
 	</dependencies>
 </project>

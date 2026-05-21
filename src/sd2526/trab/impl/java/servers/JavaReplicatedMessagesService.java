@@ -16,11 +16,11 @@ import sd2526.trab.impl.api.java.AdminMessages;
 import sd2526.trab.impl.db.DB;
 import sd2526.trab.impl.java.clients.Clients;
 import sd2526.trab.impl.replication.OperationType;
-import sd2526.trab.impl.replication.ReplicaRole;
 import sd2526.trab.impl.replication.ReplicationAck;
 import sd2526.trab.impl.replication.ReplicationCatchupResponse;
 import sd2526.trab.impl.replication.ReplicationManager;
 import sd2526.trab.impl.replication.ReplicationOperation;
+import sd2526.trab.impl.utils.IP;
 
 public class JavaReplicatedMessagesService implements Messages, AdminMessages {
 
@@ -30,17 +30,35 @@ public class JavaReplicatedMessagesService implements Messages, AdminMessages {
 	private final JavaMessages delegate;
 	private final ReplicationManager replication;
 
-	public JavaReplicatedMessagesService(ReplicaRole role, String serverUri, int logSize, int queueSize) {
+	public JavaReplicatedMessagesService(String serverUri, String zookeeperAddress, int logSize, int queueSize) {
 		this.delegate = JavaMessages.getInstance();
-		this.replication = new ReplicationManager(role, serverUri, logSize, queueSize);
+		this.replication = new ReplicationManager(
+				"%s@%s".formatted(Messages.SERVICE_NAME, IP.domain()),
+				serverUri,
+				zookeeperAddress,
+				logSize,
+				queueSize);
+	}
+
+	public void startReplication() {
+		replication.start();
 	}
 
 	public boolean isPrimary() {
 		return replication.isPrimary();
 	}
 
+	public boolean isWritablePrimary() {
+		return replication.isWritablePrimary();
+	}
+
 	public long currentVersion() {
 		return replication.currentVersion();
+	}
+
+	@Override
+	public Result<Long> getCurrentVersion() {
+		return ok(replication.currentVersion());
 	}
 
 	public URI primaryUri() {
@@ -54,14 +72,16 @@ public class JavaReplicatedMessagesService implements Messages, AdminMessages {
 	}
 
 	public void triggerCatchUpToVersion(long expectedVersion) {
-		replication.triggerCatchUpAsync(expectedVersion, this::applyReplicatedOperation);
+		replication.triggerCatchUpAsync(expectedVersion, replication.primaryUri(), this::applyReplicatedOperation);
 	}
 
 	@Override
 	public Result<String> postMessage(String pwd, Message msg) {
-		if (!replication.isPrimary()) {
+		if (!replication.isWritablePrimary()) {
 			return error(ErrorCode.FORBIDDEN);
 		}
+
+		delegate.refreshCounterFromDatabase();
 
 		var res = delegate.postMessage(pwd, msg);
 		if (!res.isOK()) {
@@ -69,7 +89,7 @@ public class JavaReplicatedMessagesService implements Messages, AdminMessages {
 		}
 
 		String mid = res.value();
-		var stored = DB.getOne(mid, Message.class);
+		var stored = delegate.getCachedMessage(mid);
 		if (!stored.isOK()) {
 			return error(stored);
 		}
@@ -98,7 +118,7 @@ public class JavaReplicatedMessagesService implements Messages, AdminMessages {
 
 	@Override
 	public Result<Void> removeInboxMessage(String name, String mid, String pwd) {
-		if (!replication.isPrimary()) {
+		if (!replication.isWritablePrimary()) {
 			return error(ErrorCode.FORBIDDEN);
 		}
 
@@ -117,7 +137,7 @@ public class JavaReplicatedMessagesService implements Messages, AdminMessages {
 
 	@Override
 	public Result<Void> deleteMessage(String name, String mid, String pwd) {
-		if (!replication.isPrimary()) {
+		if (!replication.isWritablePrimary()) {
 			return error(ErrorCode.FORBIDDEN);
 		}
 
@@ -140,7 +160,10 @@ public class JavaReplicatedMessagesService implements Messages, AdminMessages {
 
 	@Override
 	public Result<Void> remotePostMessage(Message m) {
-		if (!replication.isPrimary()) {
+		if (!replication.isWritablePrimary()) {
+			if (!replication.isPrimary() && replication.primaryUri() != null) {
+				return Clients.AdminMessagesClient.get(replication.primaryUri()).remotePostMessage(m);
+			}
 			return error(ErrorCode.FORBIDDEN);
 		}
 
@@ -158,7 +181,10 @@ public class JavaReplicatedMessagesService implements Messages, AdminMessages {
 
 	@Override
 	public Result<Void> remoteDeleteMessage(String mid) {
-		if (!replication.isPrimary()) {
+		if (!replication.isWritablePrimary()) {
+			if (!replication.isPrimary() && replication.primaryUri() != null) {
+				return Clients.AdminMessagesClient.get(replication.primaryUri()).remoteDeleteMessage(mid);
+			}
 			return error(ErrorCode.FORBIDDEN);
 		}
 
@@ -176,7 +202,10 @@ public class JavaReplicatedMessagesService implements Messages, AdminMessages {
 
 	@Override
 	public Result<Void> remoteDeleteUserInbox(String name) {
-		if (!replication.isPrimary()) {
+		if (!replication.isWritablePrimary()) {
+			if (!replication.isPrimary() && replication.primaryUri() != null) {
+				return Clients.AdminMessagesClient.get(replication.primaryUri()).remoteDeleteUserInbox(name);
+			}
 			return error(ErrorCode.FORBIDDEN);
 		}
 
@@ -203,14 +232,11 @@ public class JavaReplicatedMessagesService implements Messages, AdminMessages {
 
 	@Override
 	public Result<ReplicationCatchupResponse> getOperationsAfter(long seq, int limit) {
-		if (!replication.isPrimary()) {
-			return primaryAdmin().getOperationsAfter(seq, limit);
-		}
 		return replication.getOperationsAfter(seq, limit);
 	}
 
 	private Result<Void> replicateFromPrimary(ReplicationOperation op) {
-		if (!replication.isPrimary()) {
+		if (!replication.isWritablePrimary()) {
 			return error(ErrorCode.FORBIDDEN);
 		}
 
@@ -233,22 +259,6 @@ public class JavaReplicatedMessagesService implements Messages, AdminMessages {
 			return ok();
 		}
 		return res;
-	}
-
-	private AdminMessages primaryAdmin() {
-		return Clients.AdminMessagesClient.get(replication.primaryUri());
-	}
-
-	public static ReplicaRole parseRole(String[] args) {
-		for (var arg : args) {
-			if ("primary".equalsIgnoreCase(arg)) {
-				return ReplicaRole.PRIMARY;
-			}
-			if ("secondary".equalsIgnoreCase(arg)) {
-				return ReplicaRole.SECONDARY;
-			}
-		}
-		return ReplicaRole.SECONDARY;
 	}
 
 	public static int parseIntArg(String[] args, String key, int defaultValue) {
