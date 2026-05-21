@@ -266,7 +266,6 @@ public class JavaMessages extends JavaBaseService implements Messages, AdminMess
 	}
 	
 	public Result<String> doAsyncPost(User sender, Message msg) {
-
 		return getCachedMessage(msg.originId()).mapValue(Message::getId).orElse(() -> {
 			
 			
@@ -309,6 +308,43 @@ public class JavaMessages extends JavaBaseService implements Messages, AdminMess
 			return Result.ok(msg.getId());
 		});
 	}
+
+	public void refreshCounterFromDatabase() {
+		var res = DB.select("SELECT m.id FROM Message m", String.class);
+		if (!res.isOK() || res.value() == null) {
+			return;
+		}
+
+		long max = 0L;
+		for (var mid : res.value()) {
+			long parsed = parseLocalCounter(mid);
+			if (parsed > max) {
+				max = parsed;
+			}
+		}
+
+		if (max > 0L) {
+			final long maxValue = max;
+			counter.updateAndGet(current -> Math.max(current, maxValue));
+		}
+	}
+
+	private long parseLocalCounter(String mid) {
+		if (mid == null) {
+			return 0L;
+		}
+
+		int plus = mid.lastIndexOf('+');
+		if (plus < 0 || plus == mid.length() - 1) {
+			return 0L;
+		}
+
+		try {
+			return Long.parseLong(mid.substring(plus + 1));
+		} catch (NumberFormatException ignored) {
+			return 0L;
+		}
+	}
 		
 		public Result<Void> doAsyncDelete( Message msg ) {
 			var domains = msg.getDestination().stream().map( r -> r.split("@")[1]).collect( Collectors.toSet() );
@@ -346,8 +382,13 @@ public class JavaMessages extends JavaBaseService implements Messages, AdminMess
 						return ok();
 					} );
 			});		
+		}
 			
-		}	
+
+		@Override
+		public Result<Long> getCurrentVersion() {
+			return Result.ok(counter.get());
+		}
 
 		@Override
 		public Result<ReplicationAck> replicateOperation(ReplicationOperation op) {

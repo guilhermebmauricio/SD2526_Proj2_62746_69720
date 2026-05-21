@@ -9,6 +9,7 @@ service GrpcAdminMessages {
 	rpc RemotePostMessage(GrpcAdminMessage ) returns (google.protobuf.Empty);
 	rpc RemoteDeleteMessage(RemoteDeleteMessageArgs) returns (google.protobuf.Empty);	
 	rpc RemoteDeleteUserInbox(RemoteDeleteUserInboxArgs) returns (google.protobuf.Empty);		
+	rpc GetCurrentVersion(GetCurrentVersionArgs) returns (GetCurrentVersionResult);
 }
 
 message GrpcAdminMessage {
@@ -26,4 +27,11 @@ message RemoteDeleteMessageArgs {
 
 message RemoteDeleteUserInboxArgs {
 	string name = 1;
+}
+
+message GetCurrentVersionArgs {
+}
+
+message GetCurrentVersionResult {
+	int64 version = 1;
 }

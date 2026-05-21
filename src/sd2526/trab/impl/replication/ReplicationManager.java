@@ -22,17 +22,18 @@ import sd2526.trab.api.java.Result.ErrorCode;
 import sd2526.trab.impl.discovery.Discovery;
 import sd2526.trab.impl.java.clients.Clients;
 import sd2526.trab.impl.utils.IP;
+import sd2526.trab.impl.replication.LeadershipListener;
+import sd2526.trab.impl.replication.LeaderElection; 
 
-public class ReplicationManager {
+public class ReplicationManager implements LeadershipListener {
 
 	public interface OperationApplier {
 		Result<Void> apply(ReplicationOperation op);
 	}
 
 	private static final Logger Log = Logger.getLogger(ReplicationManager.class.getName());
-	private static final String PRIMARY_SERVICE = "MessagesPrimary";
 
-	private final ReplicaRole role;
+	private ReplicaRole role;
 	private final URI selfUri;
 	private final int maxLogSize;
 	private final int maxPendingSize;
@@ -51,23 +52,78 @@ public class ReplicationManager {
 	private long lastAppliedSeq;
 	private boolean catchupInFlight;
 	private long catchupTargetSeq;
+	private URI catchupSourceUri;
+	private URI leaderUri;
+	private boolean writeEnabled;
+	private long leadershipEpoch;
 
-	public ReplicationManager(ReplicaRole role, String selfUri, int maxLogSize, int maxPendingSize) {
-		this.role = role;
+    private final LeaderElection leaderElection;
+
+
+	public ReplicationManager(String serviceName, String selfUri, String zookeeperAddress, int maxLogSize, int maxPendingSize) {
+		this.role = ReplicaRole.UNKNOWN;
 		this.selfUri = URI.create(selfUri);
 		this.maxLogSize = Math.max(10, maxLogSize);
 		this.maxPendingSize = Math.max(10, maxPendingSize);
 		this.sequenceCounter = 0L;
 		this.lastAppliedSeq = 0L;
-
-		if (isPrimary()) {
-			var primaryServiceName = "%s@%s".formatted(PRIMARY_SERVICE, IP.domain());
-			Discovery.getInstance().announce(primaryServiceName, selfUri);
-		}
+		this.catchupSourceUri = null;
+		this.leaderUri = null;
+		this.writeEnabled = false;
+		this.leadershipEpoch = 0L;
+		this.leaderElection = new LeaderElection(zookeeperAddress, serviceName, this);
 	}
+
+    public void start() {
+        leaderElection.start();
+		synchronized (this) {
+			this.role = leaderElection.isLeader() ? ReplicaRole.PRIMARY : ReplicaRole.SECONDARY;
+			this.writeEnabled = this.role == ReplicaRole.PRIMARY;
+			this.leaderUri = this.role == ReplicaRole.PRIMARY ? selfUri : leaderUriFromHost(leaderElection.getLeaderHost());
+		}
+    }
+
+    @Override
+    public void onLeadershipChange(boolean isLeader, String leaderZNode, String leaderHost) {
+		boolean promoted;
+		synchronized (this) {
+			ReplicaRole oldRole = this.role;
+			leadershipEpoch++;
+			catchupInFlight = false;
+			catchupTargetSeq = currentVersionLocked();
+			catchupSourceUri = null;
+
+			if (isLeader) {
+				Log.info("This replica is now the primary.");
+				this.role = ReplicaRole.PRIMARY;
+				this.leaderUri = selfUri;
+				this.writeEnabled = oldRole == ReplicaRole.PRIMARY || this.writeEnabled;
+			} else {
+				Log.info("This replica is now a secondary. Current leader: " + leaderHost);
+				this.role = ReplicaRole.SECONDARY;
+				this.leaderUri = leaderUriFromHost(leaderHost);
+				this.writeEnabled = false;
+			}
+
+			promoted = oldRole != ReplicaRole.PRIMARY && this.role == ReplicaRole.PRIMARY;
+		}
+
+		if (promoted) {
+			Log.info("Primary promotion entered sync phase; writes remain disabled until catch-up completes.");
+			triggerCatchUpToLatestKnownVersion();
+		}
+    }
+
+    public boolean isSyncing() {
+        return catchupInFlight;
+    }
 
 	public boolean isPrimary() {
 		return role == ReplicaRole.PRIMARY;
+	}
+
+	public synchronized boolean isWritablePrimary() {
+		return role == ReplicaRole.PRIMARY && writeEnabled;
 	}
 
 	public synchronized long lastAppliedSeq() {
@@ -79,7 +135,7 @@ public class ReplicationManager {
 	}
 
 	public synchronized long registerPrimaryOperation(ReplicationOperation op) {
-		if (!isPrimary()) {
+		if (!isWritablePrimary()) {
 			throw new IllegalStateException("Only the primary can allocate sequence numbers.");
 		}
 
@@ -90,6 +146,7 @@ public class ReplicationManager {
 
 	public synchronized Result<ReplicationCatchupResponse> getOperationsAfter(long seq, int limit) {
 		int max = Math.max(1, Math.min(limit, maxLogSize));
+        // very Rust-like
 		var ops = operationLog.stream()
 				.filter(op -> op.getSeq() > seq)
 				.sorted(Comparator.comparingLong(ReplicationOperation::getSeq))
@@ -135,7 +192,7 @@ public class ReplicationManager {
 				}
 				pendingOps.offer(op);
 
-				var catchup = catchUpMissingLocked(applier);
+				var catchup = catchUpMissingLocked(primaryUri(), applier);
 				if (!catchup.isOK()) {
 					return error(catchup);
 				}
@@ -161,35 +218,69 @@ public class ReplicationManager {
 		}
 	}
 
-	public URI primaryUri() {
+	public synchronized URI primaryUri() {
 		if (isPrimary()) {
 			return selfUri;
 		}
-
-		var primaryServiceName = "%s@%s".formatted(PRIMARY_SERVICE, IP.domain());
-		return Discovery.getInstance().knownUrisOf(primaryServiceName, 1)[0];
+		if (leaderUri == null) {
+			leaderUri = leaderUriFromHost(leaderElection.getLeaderHost());
+		}
+		if (leaderUri == null) {
+			throw new IllegalStateException("Leader URI unavailable from ZooKeeper state.");
+		}
+		return leaderUri;
 	}
 
-	public void triggerCatchUpAsync(long targetVersion, OperationApplier applier) {
+	private void triggerCatchUpToLatestKnownVersion() {
+		long localVersion = currentVersion();
+		long bestVersion = localVersion;
+		URI bestSource = null;
+
+		for (var peer : discoverPeerReplicas()) {
+			if (peer.equals(selfUri)) {
+				continue;
+			}
+
+			var res = Clients.AdminMessagesClient.get(peer).getCurrentVersion();
+			if (res.isOK() && res.value() != null && res.value() > bestVersion) {
+				bestVersion = res.value();
+				bestSource = peer;
+			}
+		}
+
+		triggerCatchUpAsync(bestVersion, bestSource, op -> ok());
+	}
+
+	public void triggerCatchUpAsync(long targetVersion, URI sourceUri, OperationApplier applier) {
+		long runEpoch;
 		synchronized (this) {
-			if (isPrimary() || targetVersion <= currentVersionLocked()) {
+			if (targetVersion <= currentVersionLocked()) {
+				if (role == ReplicaRole.PRIMARY) {
+					writeEnabled = true;
+				}
+				return;
+			}
+
+			if (sourceUri == null) {
+				Log.info(() -> "Catch-up source is unknown while targeting version %d".formatted(targetVersion));
 				return;
 			}
 
 			catchupTargetSeq = Math.max(catchupTargetSeq, targetVersion);
+			catchupSourceUri = sourceUri;
 			if (catchupInFlight) {
 				return;
 			}
 
 			catchupInFlight = true;
+			runEpoch = leadershipEpoch;
 		}
 
-		catchupExecutor.execute(() -> runCatchUpLoop(applier));
+		catchupExecutor.execute(() -> runCatchUpLoop(applier, runEpoch));
 	}
 
-	private synchronized Result<Void> catchUpMissingLocked(OperationApplier applier) {
-		URI primary = primaryUri();
-		var res = Clients.AdminMessagesClient.get(primary).getOperationsAfter(lastAppliedSeq, maxLogSize);
+	private synchronized Result<Void> catchUpMissingLocked(URI sourceUri, OperationApplier applier) {
+		var res = Clients.AdminMessagesClient.get(sourceUri).getOperationsAfter(lastAppliedSeq, maxLogSize);
 		if (!res.isOK() || res.value() == null) {
 			return error(res);
 		}
@@ -235,44 +326,75 @@ public class ReplicationManager {
 			return res;
 		}
 
+		appendToLog(op);
 		lastAppliedSeq = Math.max(lastAppliedSeq, op.getSeq());
 		sequenceCounter = Math.max(sequenceCounter, op.getSeq());
 		return ok();
 	}
 
-	private void runCatchUpLoop(OperationApplier applier) {
+	private void runCatchUpLoop(OperationApplier applier, long runEpoch) {
 		while (true) {
 			long beforeVersion;
 			long targetVersion;
+			URI sourceUri;
 
 			synchronized (this) {
+				if (runEpoch != leadershipEpoch || !catchupInFlight) {
+					return;
+				}
 				beforeVersion = currentVersionLocked();
 				targetVersion = catchupTargetSeq;
+				sourceUri = catchupSourceUri;
 				if (beforeVersion >= targetVersion) {
 					catchupInFlight = false;
+					catchupSourceUri = null;
+					if (role == ReplicaRole.PRIMARY) {
+						writeEnabled = true;
+					}
 					return;
 				}
 			}
 
-			var catchup = catchUpMissingLocked(applier);
+			if (sourceUri == null) {
+				Log.info(() -> "Catch-up source vanished while targeting version %d".formatted(targetVersion));
+				synchronized (this) {
+					if (runEpoch == leadershipEpoch) {
+						catchupInFlight = false;
+					}
+				}
+				return;
+			}
+
+			var catchup = catchUpMissingLocked(sourceUri, applier);
 			if (!catchup.isOK()) {
 				Log.info(() -> "Catch-up failed while targeting version %d".formatted(targetVersion));
 				synchronized (this) {
-					catchupInFlight = false;
+					if (runEpoch == leadershipEpoch) {
+						catchupInFlight = false;
+						catchupSourceUri = null;
+					}
 				}
 				return;
 			}
 
 			synchronized (this) {
+				if (runEpoch != leadershipEpoch || !catchupInFlight) {
+					return;
+				}
 				long afterVersion = currentVersionLocked();
 				if (afterVersion >= catchupTargetSeq) {
 					catchupInFlight = false;
+					catchupSourceUri = null;
+					if (role == ReplicaRole.PRIMARY) {
+						writeEnabled = true;
+					}
 					return;
 				}
 				if (afterVersion <= beforeVersion) {
 					Log.info(() -> "Catch-up stalled at version %d while targeting %d"
 							.formatted(afterVersion, catchupTargetSeq));
 					catchupInFlight = false;
+					catchupSourceUri = null;
 					return;
 				}
 			}
@@ -305,5 +427,22 @@ public class ReplicationManager {
 		c.setMid(op.getMid());
 		c.setMessage(op.getMessage() == null ? null : new sd2526.trab.api.Message(op.getMessage()));
 		return c;
+	}
+
+	private URI leaderUriFromHost(String host) {
+		if (host == null || host.isBlank()) {
+			return null;
+		}
+
+		if (host.equalsIgnoreCase(selfUri.getHost())) {
+			return selfUri;
+		}
+
+		try {
+			return new URI(selfUri.getScheme(), selfUri.getUserInfo(), host, selfUri.getPort(), selfUri.getPath(), null, null);
+		} catch (Exception e) {
+			Log.info(() -> "Failed to build leader URI from host '%s': %s".formatted(host, e.getMessage()));
+			return null;
+		}
 	}
 }

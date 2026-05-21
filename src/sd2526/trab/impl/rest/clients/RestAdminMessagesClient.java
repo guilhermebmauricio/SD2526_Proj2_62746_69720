@@ -34,6 +34,11 @@ public class RestAdminMessagesClient extends RestClient implements AdminMessages
 	}
 
 	@Override
+	public Result<Long> getCurrentVersion() {
+		return super.reTry(() -> doGetCurrentVersion());
+	}
+
+	@Override
 	public Result<ReplicationAck> replicateOperation(ReplicationOperation op) {
 		return super.reTry(() -> doReplicateOperation(op));
 	}
@@ -65,6 +70,15 @@ public class RestAdminMessagesClient extends RestClient implements AdminMessages
 				.path( name )
 				.request()
 				.delete());
+	}
+
+	private Result<Long> doGetCurrentVersion() {
+		return super.toJavaResult(target
+				.path(RestAdminMessages.ADMIN)
+				.path(RestAdminMessages.VERSION)
+				.request()
+				.accept(MediaType.APPLICATION_JSON)
+				.get(), Long.class);
 	}
 
 	private Result<ReplicationAck> doReplicateOperation(ReplicationOperation op) {

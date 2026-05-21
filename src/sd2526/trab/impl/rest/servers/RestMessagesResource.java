@@ -78,6 +78,11 @@ public class RestMessagesResource extends RestResource implements RestMessages, 
 	}
 
 	@Override
+	public Long getCurrentVersion() {
+		return super.resultOrThrow(((AdminMessages)impl()).getCurrentVersion());
+	}
+
+	@Override
 	public ReplicationAck replicateOperation(ReplicationOperation op) {
 		return super.resultOrThrow(((AdminMessages) impl()).replicateOperation(op));
 	}

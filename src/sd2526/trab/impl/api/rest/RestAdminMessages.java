@@ -21,6 +21,7 @@ public interface RestAdminMessages {
 	final String NAME = "name";
 	final String INBOX = "inbox";
 	final String REPLICATION = "replication";
+	final String VERSION = "version";
 	final String AFTER = "after";
 	final String LIMIT = "limit";
 	
@@ -36,6 +37,11 @@ public interface RestAdminMessages {
 	@DELETE
 	@Path(ADMIN + "/" + INBOX + "/{" + NAME + "}")
 	void remoteDeleteUserInbox(@PathParam(NAME) String name);
+
+	@GET
+	@Path(ADMIN + "/" + VERSION)
+	@Produces(MediaType.APPLICATION_JSON)
+	Long getCurrentVersion();
 
 	@POST
 	@Path(ADMIN + "/" + REPLICATION)

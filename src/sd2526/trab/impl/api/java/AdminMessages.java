@@ -14,6 +14,8 @@ public interface AdminMessages {
 
 	Result<Void> remoteDeleteUserInbox(String name);
 
+	Result<Long> getCurrentVersion();
+
 	Result<ReplicationAck> replicateOperation(ReplicationOperation op);
 
 	Result<ReplicationCatchupResponse> getOperationsAfter(long seq, int limit);
