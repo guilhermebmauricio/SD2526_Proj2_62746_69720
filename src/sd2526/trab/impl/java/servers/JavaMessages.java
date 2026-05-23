@@ -329,6 +329,13 @@ public class JavaMessages extends JavaBaseService implements Messages, AdminMess
 		}
 	}
 
+	public void trackCounterFromMid(String mid) {
+		long parsed = parseLocalCounter(mid);
+		if (parsed > 0) {
+			counter.updateAndGet(current -> Math.max(current, parsed));
+		}
+	}
+
 	private long parseLocalCounter(String mid) {
 		if (mid == null) {
 			return 0L;

@@ -41,6 +41,8 @@ public class JavaReplicatedMessagesService implements Messages, AdminMessages {
 	}
 
 	public void startReplication() {
+		replication.setPromotionApplier(this::applyReplicatedOperation);
+		delegate.refreshCounterFromDatabase();
 		replication.start();
 	}
 
@@ -80,8 +82,6 @@ public class JavaReplicatedMessagesService implements Messages, AdminMessages {
 		if (!replication.isWritablePrimary()) {
 			return error(ErrorCode.FORBIDDEN);
 		}
-
-		delegate.refreshCounterFromDatabase();
 
 		var res = delegate.postMessage(pwd, msg);
 		if (!res.isOK()) {
@@ -246,7 +246,13 @@ public class JavaReplicatedMessagesService implements Messages, AdminMessages {
 
 	private Result<Void> applyReplicatedOperation(ReplicationOperation op) {
 		return switch (op.getType()) {
-			case POST_MESSAGE, REMOTE_POST_MESSAGE -> delegate.remotePostMessage(op.getMessage());
+			case POST_MESSAGE, REMOTE_POST_MESSAGE -> {
+				var res = delegate.remotePostMessage(op.getMessage());
+				if (res.isOK() && op.getMessage() != null && op.getMessage().getId() != null) {
+					delegate.trackCounterFromMid(op.getMessage().getId());
+				}
+				yield res;
+			}
 			case DELETE_MESSAGE, REMOTE_DELETE_MESSAGE -> delegate.remoteDeleteMessage(op.getMid());
 			case REMOVE_INBOX_MESSAGE -> removeInboxLocally(op.getName(), op.getMid());
 			case REMOTE_DELETE_USER_INBOX -> delegate.remoteDeleteUserInbox(op.getName());

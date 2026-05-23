@@ -58,6 +58,7 @@ public class ReplicationManager implements LeadershipListener {
 	private long leadershipEpoch;
 
     private final LeaderElection leaderElection;
+    private OperationApplier promotionApplier;
 
 
 	public ReplicationManager(String serviceName, String selfUri, String zookeeperAddress, int maxLogSize, int maxPendingSize) {
@@ -73,6 +74,10 @@ public class ReplicationManager implements LeadershipListener {
 		this.leadershipEpoch = 0L;
 		this.leaderElection = new LeaderElection(zookeeperAddress, serviceName, this);
 	}
+
+    public void setPromotionApplier(OperationApplier applier) {
+        this.promotionApplier = applier;
+    }
 
     public void start() {
         leaderElection.start();
@@ -248,7 +253,8 @@ public class ReplicationManager implements LeadershipListener {
 			}
 		}
 
-		triggerCatchUpAsync(bestVersion, bestSource, op -> ok());
+		OperationApplier applier = promotionApplier != null ? promotionApplier : op -> ok();
+		triggerCatchUpAsync(bestVersion, bestSource, applier);
 	}
 
 	public void triggerCatchUpAsync(long targetVersion, URI sourceUri, OperationApplier applier) {
