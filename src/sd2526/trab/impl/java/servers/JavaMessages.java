@@ -11,10 +11,10 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Predicate;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -43,7 +43,6 @@ public class JavaMessages extends JavaBaseService implements Messages, AdminMess
 	private static final long DIRTY_INBOX_CACHE_EXPIRATION = 10000;
 
 	final JobDispatcher jobs;
-	final AtomicLong counter = new AtomicLong(0L);	
 	private static Logger Log = Logger.getLogger(JavaMessages.class.getName());
 
 	
@@ -269,7 +268,7 @@ public class JavaMessages extends JavaBaseService implements Messages, AdminMess
 		return getCachedMessage(msg.originId()).mapValue(Message::getId).orElse(() -> {
 			
 			
-			msg.setId("%s+%04d".formatted(THIS_DOMAIN, counter.incrementAndGet()));
+			msg.setId(UUID.randomUUID().toString());
 			
 			messagesCache.put(msg.originId(), new Message( msg )); // For ensuring idempotency...
 			
@@ -309,43 +308,6 @@ public class JavaMessages extends JavaBaseService implements Messages, AdminMess
 		});
 	}
 
-	public void refreshCounterFromDatabase() {
-		var res = DB.select("SELECT m.id FROM Message m", String.class);
-		if (!res.isOK() || res.value() == null) {
-			return;
-		}
-
-		long max = 0L;
-		for (var mid : res.value()) {
-			long parsed = parseLocalCounter(mid);
-			if (parsed > max) {
-				max = parsed;
-			}
-		}
-
-		if (max > 0L) {
-			final long maxValue = max;
-			counter.updateAndGet(current -> Math.max(current, maxValue));
-		}
-	}
-
-	private long parseLocalCounter(String mid) {
-		if (mid == null) {
-			return 0L;
-		}
-
-		int plus = mid.lastIndexOf('+');
-		if (plus < 0 || plus == mid.length() - 1) {
-			return 0L;
-		}
-
-		try {
-			return Long.parseLong(mid.substring(plus + 1));
-		} catch (NumberFormatException ignored) {
-			return 0L;
-		}
-	}
-		
 		public Result<Void> doAsyncDelete( Message msg ) {
 			var domains = msg.getDestination().stream().map( r -> r.split("@")[1]).collect( Collectors.toSet() );
 			for( var domain : domains )
@@ -382,22 +344,6 @@ public class JavaMessages extends JavaBaseService implements Messages, AdminMess
 						return ok();
 					} );
 			});		
-		}
-			
-
-		@Override
-		public Result<Long> getCurrentVersion() {
-			return Result.ok(counter.get());
-		}
-
-		@Override
-		public Result<ReplicationAck> replicateOperation(ReplicationOperation op) {
-			return Result.error(ErrorCode.NOT_IMPLEMENTED);
-		}
-
-		@Override
-		public Result<ReplicationCatchupResponse> getOperationsAfter(long seq, int limit) {
-			return Result.error(ErrorCode.NOT_IMPLEMENTED);
 		}
 		
 		

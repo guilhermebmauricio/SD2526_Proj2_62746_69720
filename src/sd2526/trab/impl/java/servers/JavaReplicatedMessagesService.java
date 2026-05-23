@@ -13,6 +13,7 @@ import sd2526.trab.api.java.Messages;
 import sd2526.trab.api.java.Result;
 import sd2526.trab.api.java.Result.ErrorCode;
 import sd2526.trab.impl.api.java.AdminMessages;
+import sd2526.trab.impl.api.java.ReplicationMessages;
 import sd2526.trab.impl.db.DB;
 import sd2526.trab.impl.java.clients.Clients;
 import sd2526.trab.impl.replication.OperationType;
@@ -22,7 +23,7 @@ import sd2526.trab.impl.replication.ReplicationManager;
 import sd2526.trab.impl.replication.ReplicationOperation;
 import sd2526.trab.impl.utils.IP;
 
-public class JavaReplicatedMessagesService implements Messages, AdminMessages {
+public class JavaReplicatedMessagesService implements Messages, AdminMessages, ReplicationMessages {
 
 	private static final Logger Log = Logger.getLogger(JavaReplicatedMessagesService.class.getName());
 	private static final int QUORUM_ACKS = 1;
@@ -41,6 +42,7 @@ public class JavaReplicatedMessagesService implements Messages, AdminMessages {
 	}
 
 	public void startReplication() {
+		replication.setPromotionApplier(this::applyReplicatedOperation);
 		replication.start();
 	}
 
@@ -80,8 +82,6 @@ public class JavaReplicatedMessagesService implements Messages, AdminMessages {
 		if (!replication.isWritablePrimary()) {
 			return error(ErrorCode.FORBIDDEN);
 		}
-
-		delegate.refreshCounterFromDatabase();
 
 		var res = delegate.postMessage(pwd, msg);
 		if (!res.isOK()) {
@@ -246,7 +246,10 @@ public class JavaReplicatedMessagesService implements Messages, AdminMessages {
 
 	private Result<Void> applyReplicatedOperation(ReplicationOperation op) {
 		return switch (op.getType()) {
-			case POST_MESSAGE, REMOTE_POST_MESSAGE -> delegate.remotePostMessage(op.getMessage());
+			case POST_MESSAGE, REMOTE_POST_MESSAGE -> {
+				var res = delegate.remotePostMessage(op.getMessage());
+				yield res;
+			}
 			case DELETE_MESSAGE, REMOTE_DELETE_MESSAGE -> delegate.remoteDeleteMessage(op.getMid());
 			case REMOVE_INBOX_MESSAGE -> removeInboxLocally(op.getName(), op.getMid());
 			case REMOTE_DELETE_USER_INBOX -> delegate.remoteDeleteUserInbox(op.getName());

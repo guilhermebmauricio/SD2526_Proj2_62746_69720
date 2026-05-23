@@ -1,19 +1,19 @@
 USERS_REST_SERVER_MAINCLASS=sd2526.trab.impl.rest.servers.RestUsersServer
 USERS_REST_PORT=3456
-USERS_REST_EXTRA_ARGS=
+USERS_REST_EXTRA_ARGS=--server-secret changeit
 
 USERS_GRPC_SERVER_MAINCLASS=sd2526.trab.impl.grpc.servers.GrpcUsersServer
 USERS_GRPC_PORT=13456
-USERS_GRPC_EXTRA_ARGS=
+USERS_GRPC_EXTRA_ARGS=--server-secret changeit
 
 
 MESSAGES_REST_SERVER_MAINCLASS=sd2526.trab.impl.rest.servers.RestMessagesServer
 MESSAGES_REST_PORT=4567
-MESSAGES_REST_EXTRA_ARGS=
+MESSAGES_REST_EXTRA_ARGS=--server-secret changeit
 
 MESSAGES_GRPC_SERVER_MAINCLASS=sd2526.trab.impl.grpc.servers.GrpcMessagesServer
 MESSAGES_GRPC_PORT=14567
-MESSAGES_GRPC_EXTRA_ARGS=
+MESSAGES_GRPC_EXTRA_ARGS=--server-secret changeit
 
 
 GATEWAY_REST_SERVER_MAINCLASS=sd2526.trab.impl.rest.servers.RestGatewayServer
@@ -30,8 +30,8 @@ MESSAGES_REST_PROXY_EXTRA_ARGS=true
 
 MESSAGES_REP_SERVER_MAINCLASS=sd2526.trab.impl.rest.servers.RestReplicatedMessagesServer
 MESSAGES_REP_PORT=5567
-MESSAGES_REP_EXTRA_ARGS_FIRST=primary --rep-log-size 500 --rep-queue-size 500
-MESSAGES_REP_EXTRA_ARGS_OTHER=secondary --rep-log-size 500 --rep-queue-size 500
+MESSAGES_REP_EXTRA_ARGS_FIRST=primary --rep-log-size 500 --rep-queue-size 500 --server-secret changeit
+MESSAGES_REP_EXTRA_ARGS_OTHER=secondary --rep-log-size 500 --rep-queue-size 500 --server-secret changeit
 
 #keystores for the users server (e.g. users.ourorg0,users.jks,users0pwd)
 USERS_KEYSTORES=users.ourorg0,users_ourorg0.jks,users.ourorg0.pwd users.ourorg1,users_ourorg1.jks,users.ourorg1.pwd users.ourorg2,users_ourorg2.jks,users.ourorg2.pwd

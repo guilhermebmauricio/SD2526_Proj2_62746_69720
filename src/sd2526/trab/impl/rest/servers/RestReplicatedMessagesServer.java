@@ -6,6 +6,7 @@ import org.glassfish.jersey.server.ResourceConfig;
 
 import sd2526.trab.api.java.Messages;
 import sd2526.trab.impl.java.servers.JavaReplicatedMessagesService;
+import sd2526.trab.impl.utils.ServerSecret;
 
 public class RestReplicatedMessagesServer extends AbstractRestServer {
 
@@ -28,13 +29,16 @@ public class RestReplicatedMessagesServer extends AbstractRestServer {
 		int logSize = JavaReplicatedMessagesService.parseIntArg(args, "--rep-log-size", DEFAULT_LOG_SIZE);
 		int pendingSize = JavaReplicatedMessagesService.parseIntArg(args, "--rep-queue-size", DEFAULT_PENDING_SIZE);
 		String zookeeperEndpoint = parseStringArg(args, "--zk", DEFAULT_ZOOKEEPER_ENDPOINT);
+		String secret = parseStringArg(args, "--server-secret", null);
+		if (secret != null) ServerSecret.set(secret);
 
         // TODO: it's annoying me why this works here, but it had to be changed in the Gateway server to be class registering...
         // needs to be investigated
 		var replicated = new JavaReplicatedMessagesService(super.serverURI, zookeeperEndpoint, logSize, pendingSize);
 		replicated.startReplication();
-		config.registerInstances(new RestReplicatedMessagesResource(replicated, replicated));
+		config.registerInstances(new RestReplicatedMessagesResource(replicated, replicated, replicated));
 		config.registerInstances(new VersionHeaderHandler());
+		config.register(ServerSecretFilter.class);
 	}
 
 	private static String parseStringArg(String[] args, String key, String defaultValue) {

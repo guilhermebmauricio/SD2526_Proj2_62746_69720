@@ -1,16 +1,16 @@
+
 package sd2526.trab.impl.api.java;
 
-import sd2526.trab.api.Message;
 import sd2526.trab.api.java.Result;
 import sd2526.trab.impl.replication.ReplicationAck;
 import sd2526.trab.impl.replication.ReplicationCatchupResponse;
 import sd2526.trab.impl.replication.ReplicationOperation;
 
-public interface AdminMessages {
+public interface ReplicationMessages {
 
-	Result<Void> remotePostMessage(Message m);
+	Result<Long> getCurrentVersion();
 
-	Result<Void> remoteDeleteMessage(String mid);
+	Result<ReplicationAck> replicateOperation(ReplicationOperation op);
 
-	Result<Void> remoteDeleteUserInbox(String name);
+	Result<ReplicationCatchupResponse> getOperationsAfter(long seq, int limit);
 }

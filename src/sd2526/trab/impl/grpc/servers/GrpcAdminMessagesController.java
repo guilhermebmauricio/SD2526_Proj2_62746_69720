@@ -8,8 +8,6 @@ import io.grpc.ServerServiceDefinition;
 import io.grpc.stub.StreamObserver;
 import sd2526.trab.impl.api.java.AdminMessages;
 import sd2526.trab.impl.grpc.generated_java.AdminMessagesProtoBuf.GrpcAdminMessage;
-import sd2526.trab.impl.grpc.generated_java.AdminMessagesProtoBuf.GetCurrentVersionArgs;
-import sd2526.trab.impl.grpc.generated_java.AdminMessagesProtoBuf.GetCurrentVersionResult;
 import sd2526.trab.impl.grpc.generated_java.AdminMessagesProtoBuf.RemoteDeleteMessageArgs;
 import sd2526.trab.impl.grpc.generated_java.GrpcAdminMessagesGrpc;
 import sd2526.trab.impl.java.servers.JavaMessages;
@@ -35,12 +33,5 @@ public class GrpcAdminMessagesController extends GrpcController implements GrpcA
 		super.toGrpcResult(responseObserver,
 				((AdminMessages)impl).remoteDeleteMessage(  request.getMid() ),
 				(__) -> Empty.newBuilder().build());
-	}
-
-	@Override
-	public void getCurrentVersion(GetCurrentVersionArgs request, StreamObserver<GetCurrentVersionResult> responseObserver) {
-		super.toGrpcResult(responseObserver,
-				((AdminMessages)impl).getCurrentVersion(),
-				(version) -> GetCurrentVersionResult.newBuilder().setVersion(version).build());
 	}
 }

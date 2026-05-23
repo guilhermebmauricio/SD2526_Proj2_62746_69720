@@ -6,6 +6,8 @@ import java.util.Set;
 import jakarta.ws.rs.client.Entity;
 import jakarta.ws.rs.core.GenericType;
 import jakarta.ws.rs.core.MediaType;
+import sd2526.trab.impl.rest.servers.ServerSecretFilter;
+import sd2526.trab.impl.utils.ServerSecret;
 import sd2526.trab.api.java.Result;
 import sd2526.trab.api.rest.RestUsers;
 import sd2526.trab.impl.api.java.AdminUsers;
@@ -27,6 +29,7 @@ public class RestAdminUsersClient extends RestClient implements AdminUsers {
 		return super.toJavaResult( target
 				.path(RestAdminUsers.ADMIN)
 				.request()
+				.header(ServerSecretFilter.HEADER, ServerSecret.get())
 				.accept( MediaType.APPLICATION_JSON)
 				.post( Entity.json( names )), new GenericType<Set<String>>() {});
 	}

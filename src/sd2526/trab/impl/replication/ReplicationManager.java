@@ -11,8 +11,12 @@ import java.util.Comparator;
 import java.util.Deque;
 import java.util.List;
 import java.util.PriorityQueue;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
@@ -41,10 +45,19 @@ public class ReplicationManager implements LeadershipListener {
 	private final Deque<ReplicationOperation> operationLog = new ArrayDeque<>();
 	private final PriorityQueue<ReplicationOperation> pendingOps =
 			new PriorityQueue<>(Comparator.comparingLong(ReplicationOperation::getSeq));
+	private static final long REPLICATION_TIMEOUT_MS = 5_000L;
+
 	private final ExecutorService catchupExecutor = Executors.newSingleThreadExecutor(r -> {
 		var thread = new Thread(r);
 		thread.setDaemon(true);
 		thread.setName("messages-replication-catchup");
+		return thread;
+	});
+
+	private final ExecutorService replicationExecutor = Executors.newCachedThreadPool(r -> {
+		var thread = new Thread(r);
+		thread.setDaemon(true);
+		thread.setName("messages-replication-fanout");
 		return thread;
 	});
 
@@ -58,6 +71,7 @@ public class ReplicationManager implements LeadershipListener {
 	private long leadershipEpoch;
 
     private final LeaderElection leaderElection;
+    private OperationApplier promotionApplier;
 
 
 	public ReplicationManager(String serviceName, String selfUri, String zookeeperAddress, int maxLogSize, int maxPendingSize) {
@@ -73,6 +87,10 @@ public class ReplicationManager implements LeadershipListener {
 		this.leadershipEpoch = 0L;
 		this.leaderElection = new LeaderElection(zookeeperAddress, serviceName, this);
 	}
+
+    public void setPromotionApplier(OperationApplier applier) {
+        this.promotionApplier = applier;
+    }
 
     public void start() {
         leaderElection.start();
@@ -164,20 +182,47 @@ public class ReplicationManager implements LeadershipListener {
 				.filter(uri -> !uri.equals(selfUri))
 				.collect(Collectors.toList());
 
-		int ackCount = 0;
+		if (quorumAcks <= 0) return ok();
+		if (secondaries.size() < quorumAcks) return error(ErrorCode.TIMEOUT);
+
+		var ackCount  = new AtomicInteger(0);
+		var doneCount = new AtomicInteger(0);
+		var quorumFuture = new CompletableFuture<Result<Void>>();
+		int total = secondaries.size();
+
+        // for loop + executor + future allow for parallel replication to secondaries
 		for (var secondary : secondaries) {
-			var res = Clients.AdminMessagesClient.get(secondary).replicateOperation(op);
-			if (res.isOK() && res.value() != null && res.value().getSeq() >= op.getSeq()) {
-				ackCount++;
-				if (ackCount >= quorumAcks) {
-					return ok();
+            // execute and return immediately, allowing other replications to proceed in parallel
+			replicationExecutor.execute(() -> {
+			var res = Clients.ReplicationMessagesClient.get(secondary).replicateOperation(op);
+				boolean succeeded = res.isOK() && res.value() != null && res.value().getSeq() >= op.getSeq();
+
+				if (!succeeded) {
+					Log.info(() -> "Replication to %s failed for seq=%d".formatted(secondary, op.getSeq()));
 				}
-			} else {
-				Log.info(() -> "Replication to %s failed for seq=%d".formatted(secondary, op.getSeq()));
-			}
+
+				int acks = succeeded ? ackCount.incrementAndGet() : ackCount.get();
+				int done = doneCount.incrementAndGet();
+
+                // releases the future based on the total result
+				if (acks >= quorumAcks) {
+					quorumFuture.complete(ok());
+				} else if (done == total) {
+					quorumFuture.complete(error(ErrorCode.TIMEOUT));
+				}
+			});
 		}
 
-		return error(ErrorCode.TIMEOUT);
+		try {
+			return quorumFuture.get(REPLICATION_TIMEOUT_MS, TimeUnit.MILLISECONDS); // blocked until future released
+		} catch (TimeoutException e) {
+			return error(ErrorCode.TIMEOUT);
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			return error(ErrorCode.INTERNAL_ERROR);
+		} catch (java.util.concurrent.ExecutionException e) {
+			return error(ErrorCode.INTERNAL_ERROR);
+		}
 	}
 
 	public Result<ReplicationAck> onReplicatedOperation(ReplicationOperation op, OperationApplier applier) {
@@ -241,14 +286,15 @@ public class ReplicationManager implements LeadershipListener {
 				continue;
 			}
 
-			var res = Clients.AdminMessagesClient.get(peer).getCurrentVersion();
+		var res = Clients.ReplicationMessagesClient.get(peer).getCurrentVersion();
 			if (res.isOK() && res.value() != null && res.value() > bestVersion) {
 				bestVersion = res.value();
 				bestSource = peer;
 			}
 		}
 
-		triggerCatchUpAsync(bestVersion, bestSource, op -> ok());
+		OperationApplier applier = promotionApplier != null ? promotionApplier : op -> ok();
+		triggerCatchUpAsync(bestVersion, bestSource, applier);
 	}
 
 	public void triggerCatchUpAsync(long targetVersion, URI sourceUri, OperationApplier applier) {
@@ -280,7 +326,7 @@ public class ReplicationManager implements LeadershipListener {
 	}
 
 	private synchronized Result<Void> catchUpMissingLocked(URI sourceUri, OperationApplier applier) {
-		var res = Clients.AdminMessagesClient.get(sourceUri).getOperationsAfter(lastAppliedSeq, maxLogSize);
+		var res = Clients.ReplicationMessagesClient.get(sourceUri).getOperationsAfter(lastAppliedSeq, maxLogSize);
 		if (!res.isOK() || res.value() == null) {
 			return error(res);
 		}
@@ -360,6 +406,9 @@ public class ReplicationManager implements LeadershipListener {
 				synchronized (this) {
 					if (runEpoch == leadershipEpoch) {
 						catchupInFlight = false;
+						if (role == ReplicaRole.PRIMARY) {
+							writeEnabled = true;
+						}
 					}
 				}
 				return;
@@ -372,6 +421,9 @@ public class ReplicationManager implements LeadershipListener {
 					if (runEpoch == leadershipEpoch) {
 						catchupInFlight = false;
 						catchupSourceUri = null;
+						if (role == ReplicaRole.PRIMARY) {
+							writeEnabled = true;
+						}
 					}
 				}
 				return;
@@ -395,6 +447,9 @@ public class ReplicationManager implements LeadershipListener {
 							.formatted(afterVersion, catchupTargetSeq));
 					catchupInFlight = false;
 					catchupSourceUri = null;
+					if (role == ReplicaRole.PRIMARY) {
+						writeEnabled = true;
+					}
 					return;
 				}
 			}

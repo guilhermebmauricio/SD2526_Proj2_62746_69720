@@ -10,21 +10,25 @@ import sd2526.trab.api.Message;
 import sd2526.trab.api.java.Messages;
 import sd2526.trab.api.rest.RestMessages;
 import sd2526.trab.impl.api.java.AdminMessages;
+import sd2526.trab.impl.api.java.ReplicationMessages;
 import sd2526.trab.impl.api.rest.RestAdminMessages;
+import sd2526.trab.impl.api.rest.RestReplicationMessages;
 import sd2526.trab.impl.java.servers.JavaReplicatedMessagesService;
 import sd2526.trab.impl.replication.ReplicationAck;
 import sd2526.trab.impl.replication.ReplicationCatchupResponse;
 import sd2526.trab.impl.replication.ReplicationOperation;
 
 @Singleton
-public class RestReplicatedMessagesResource extends RestResource implements RestMessages, RestAdminMessages {
+public class RestReplicatedMessagesResource extends RestResource implements RestMessages, RestAdminMessages, RestReplicationMessages {
 
 	private final Messages messages;
 	private final AdminMessages admin;
+	private final ReplicationMessages replication;
 
-	public RestReplicatedMessagesResource(Messages messages, AdminMessages admin) {
+	public RestReplicatedMessagesResource(Messages messages, AdminMessages admin, ReplicationMessages replication) {
 		this.messages = messages;
 		this.admin = admin;
+		this.replication = replication;
 	}
 
 	@Override
@@ -97,17 +101,17 @@ public class RestReplicatedMessagesResource extends RestResource implements Rest
 
 	@Override
 	public Long getCurrentVersion() {
-		return super.resultOrThrow(admin.getCurrentVersion());
+		return super.resultOrThrow(replication.getCurrentVersion());
 	}
 
 	@Override
 	public ReplicationAck replicateOperation(ReplicationOperation op) {
-		return super.resultOrThrow(admin.replicateOperation(op));
+		return super.resultOrThrow(replication.replicateOperation(op));
 	}
 
 	@Override
 	public ReplicationCatchupResponse getOperationsAfter(long seq, int limit) {
-		return super.resultOrThrow(admin.getOperationsAfter(seq, limit));
+		return super.resultOrThrow(replication.getOperationsAfter(seq, limit));
 	}
 
 	private void redirectOrRejectWriteIfNotWritable(URI targetUri) {
