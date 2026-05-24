@@ -24,9 +24,9 @@ GATEWAY_REST_EXTRA_ARGS=
 DISCOVERY_MULTICAST_IP=226.226.226.226
 DISCOVERY_MULTICAST_PORT=2266
 
-#MESSAGES_REST_PROXY_SERVER_MAINCLASS=messages REST proxy server class (external service)
-#MESSAGES_REST_PROXY_PORT=messages REST proxy server port
-#MESSAGES_REST_PROXY_EXTRA_ARGS=extra arguments for messages REST proxy server (optional)
+MESSAGES_REST_PROXY_SERVER_MAINCLASS=sd2526.trab.impl.rest.servers.RestZohoMessagesServer
+MESSAGES_REST_PROXY_PORT=4567
+MESSAGES_REST_PROXY_EXTRA_ARGS=true
 
 #MESSAGES_REP_SERVER_MAINCLASS=replicated messages REST server class
 #MESSAGES_REP_PORT=replicated messages REST server port
