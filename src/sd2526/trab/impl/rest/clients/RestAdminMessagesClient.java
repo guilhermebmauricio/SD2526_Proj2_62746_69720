@@ -3,6 +3,8 @@ package sd2526.trab.impl.rest.clients;
 import jakarta.ws.rs.client.Entity;
 import jakarta.ws.rs.core.MediaType;
 import sd2526.trab.api.Message;
+import sd2526.trab.impl.rest.servers.ServerSecretFilter;
+import sd2526.trab.impl.utils.ServerSecret;
 import sd2526.trab.api.java.Result;
 import sd2526.trab.api.rest.RestMessages;
 import sd2526.trab.impl.api.java.AdminMessages;
@@ -28,11 +30,12 @@ public class RestAdminMessagesClient extends RestClient implements AdminMessages
 	public Result<Void> remoteDeleteUserInbox(String name) {
 		return super.reTry( () -> doRemoteDeleteUserInbox(name) );
 	}
-	
+
 	private Result<Void> doRemotePostMessage(Message msg) {
 		return super.toJavaResult( target
 				.path(RestAdminMessages.ADMIN)
 				.request()
+				.header(ServerSecretFilter.HEADER, ServerSecret.get())
 				.post( Entity.entity(msg, MediaType.APPLICATION_JSON )));
 	}
 
@@ -41,15 +44,17 @@ public class RestAdminMessagesClient extends RestClient implements AdminMessages
 				.path(RestAdminMessages.ADMIN)
 				.path( mid )
 				.request()
+				.header(ServerSecretFilter.HEADER, ServerSecret.get())
 				.delete());
 	}
-	
+
 	private Result<Void> doRemoteDeleteUserInbox(String name) {
 		return super.toJavaResult( target
 				.path(RestAdminMessages.ADMIN)
 				.path(RestAdminMessages.INBOX)
 				.path( name )
 				.request()
+				.header(ServerSecretFilter.HEADER, ServerSecret.get())
 				.delete());
 	}
 }

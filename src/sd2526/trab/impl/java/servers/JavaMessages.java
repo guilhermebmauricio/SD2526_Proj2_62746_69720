@@ -11,10 +11,10 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Predicate;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -30,6 +30,9 @@ import sd2526.trab.api.java.Result.ErrorCode;
 import sd2526.trab.impl.api.java.AdminMessages;
 import sd2526.trab.impl.db.DB;
 import sd2526.trab.impl.java.clients.Clients;
+import sd2526.trab.impl.replication.ReplicationAck;
+import sd2526.trab.impl.replication.ReplicationCatchupResponse;
+import sd2526.trab.impl.replication.ReplicationOperation;
 import sd2526.trab.impl.utils.IP;
 import sd2526.trab.impl.utils.Sleep;
 
@@ -40,7 +43,6 @@ public class JavaMessages extends JavaBaseService implements Messages, AdminMess
 	private static final long DIRTY_INBOX_CACHE_EXPIRATION = 10000;
 
 	final JobDispatcher jobs;
-	final AtomicLong counter = new AtomicLong(0L);	
 	private static Logger Log = Logger.getLogger(JavaMessages.class.getName());
 
 	
@@ -109,12 +111,12 @@ public class JavaMessages extends JavaBaseService implements Messages, AdminMess
 				SELECT m.id FROM Message m
 				INNER JOIN InboxEntry e
 				ON e.mid = m.id 
-				AND e.recipient = '%s'
-				WHERE (upper(m.subject) LIKE '%%%s%%' OR upper(m.contents) LIKE '%%%s%%')
-				""".formatted(name, query.toUpperCase(), query.toUpperCase());
+				AND e.recipient = ?1
+				WHERE (upper(m.subject) LIKE ?2 OR upper(m.contents) LIKE ?2)
+				""";
 
 		return getUser(name, pwd )
-				.then( () -> DB.select( sqlExpr, String.class));		
+				.then( () -> DB.select( sqlExpr, String.class, name, "%" + query.toUpperCase() + "%"));		
 	}
 	
 	@Override
@@ -263,11 +265,10 @@ public class JavaMessages extends JavaBaseService implements Messages, AdminMess
 	}
 	
 	public Result<String> doAsyncPost(User sender, Message msg) {
-
 		return getCachedMessage(msg.originId()).mapValue(Message::getId).orElse(() -> {
 			
 			
-			msg.setId("%s+%04d".formatted(THIS_DOMAIN, counter.incrementAndGet()));
+			msg.setId(UUID.randomUUID().toString());
 			
 			messagesCache.put(msg.originId(), new Message( msg )); // For ensuring idempotency...
 			
@@ -306,7 +307,7 @@ public class JavaMessages extends JavaBaseService implements Messages, AdminMess
 			return Result.ok(msg.getId());
 		});
 	}
-		
+
 		public Result<Void> doAsyncDelete( Message msg ) {
 			var domains = msg.getDestination().stream().map( r -> r.split("@")[1]).collect( Collectors.toSet() );
 			for( var domain : domains )
@@ -343,8 +344,7 @@ public class JavaMessages extends JavaBaseService implements Messages, AdminMess
 						return ok();
 					} );
 			});		
-			
-		}	
+		}
 		
 		
 		private List<String> getLocalRecipientAddresses(  Message msg ) {

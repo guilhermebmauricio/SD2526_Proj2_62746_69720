@@ -5,7 +5,6 @@ import static sd2526.trab.api.java.Result.ok;
 import static sd2526.trab.api.java.Result.ErrorCode.BAD_REQUEST;
 import static sd2526.trab.api.java.Result.ErrorCode.CONFLICT;
 import static sd2526.trab.api.java.Result.ErrorCode.FORBIDDEN;
-import static sd2526.trab.impl.java.clients.Clients.AdminMessagesClient;
 
 import java.util.Collection;
 import java.util.HashSet;
@@ -14,11 +13,14 @@ import java.util.Set;
 import java.util.logging.Logger;
 
 import sd2526.trab.api.User;
+import sd2526.trab.api.java.Messages;
 import sd2526.trab.api.java.Result;
 import sd2526.trab.api.java.Result.ErrorCode;
 import sd2526.trab.api.java.Users;
 import sd2526.trab.impl.api.java.AdminUsers;
 import sd2526.trab.impl.db.DB;
+import sd2526.trab.impl.discovery.Discovery;
+import sd2526.trab.impl.java.clients.Clients;
 
 
 public class JavaUsers extends JavaBaseService implements Users, AdminUsers {
@@ -77,7 +79,12 @@ public class JavaUsers extends JavaBaseService implements Users, AdminUsers {
 		return fetchUser(name, pwd )
 				.thenWith( (user) -> DB.deleteOne(user))		
 				.async( (user) -> {
-					AdminMessagesClient.get().remoteDeleteUserInbox(name);
+					var sn = "%s@%s".formatted(Messages.SERVICE_NAME, THIS_DOMAIN);
+					for (var uri : Discovery.getInstance().knownUrisOf(sn, 1)) {
+						if (Clients.AdminMessagesClient.get(uri).remoteDeleteUserInbox(name).isOK()) {
+							break;
+						}
+					}
 				});
 	}
 
