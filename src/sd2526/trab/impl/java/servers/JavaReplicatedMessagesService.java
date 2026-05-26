@@ -247,7 +247,7 @@ public class JavaReplicatedMessagesService implements Messages, AdminMessages, R
 	private Result<Void> applyReplicatedOperation(ReplicationOperation op) {
 		return switch (op.getType()) {
 			case POST_MESSAGE, REMOTE_POST_MESSAGE -> {
-				var res = delegate.remotePostMessage(op.getMessage());
+				var res = delegate.replicatedPostMessage(op.getMessage());
 				yield res;
 			}
 			case DELETE_MESSAGE, REMOTE_DELETE_MESSAGE -> delegate.remoteDeleteMessage(op.getMid());

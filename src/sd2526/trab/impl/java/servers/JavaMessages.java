@@ -218,6 +218,15 @@ public class JavaMessages extends JavaBaseService implements Messages, AdminMess
 		return postToLocalInboxes(localAddresses, msg);
 	}
 
+	public Result<Void> replicatedPostMessage(Message msg) {
+		Log.info( () -> "replicatedPostMessage : msg = %s\n".formatted(msg));
+
+		var localAddresses = getLocalRecipientAddresses(msg);
+		if (!localAddresses.isEmpty())
+			deliverToKnownLocalRecipients(localAddresses, msg);
+		return ok();
+	}
+
 	private Result<Void> deleteFromLocalInbox(String mid) {
 		Log.info( () -> "deleteFromLocalInbox : mid = %s\n".formatted(mid));
 		
